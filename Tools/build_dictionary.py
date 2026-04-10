@@ -53,12 +53,16 @@ def remove_brackets_with_contents(text: str) -> str:
 
     # 3. Standard brackets with contents
     text = re.sub(r'\([^)]*\)', '', text, flags=re.DOTALL)
-    text = re.sub(r'(?<!\u300a)（[^）]*）', '', text, flags=re.DOTALL)  # avoid 《（）》 conflict
     text = re.sub(r'（[^）]*）', '', text, flags=re.DOTALL)
     text = re.sub(r'〈[^〉]*〉', '', text, flags=re.DOTALL)
     text = re.sub(r'《[^》]*》', '', text, flags=re.DOTALL)
     text = re.sub(r'【[^】]*】', '', text, flags=re.DOTALL)
     text = re.sub(r'｟[^｠]*｠', '', text, flags=re.DOTALL)
+    text = re.sub(r'\{[^}]*\}', '', text, flags=re.DOTALL)
+    text = re.sub(r'〖[^〗]*〗', '', text, flags=re.DOTALL)
+    # Remove leftover stray uppercase U/C followed by ) (broken bracket leak: "U〉UC〉")
+    text = re.sub(r'[UC]〉', '', text)
+    text = re.sub(r'〈[UC]', '', text)
 
     # 4. Keep contents of 『』 but remove brackets
     text = text.replace('『', '').replace('』', '')
@@ -75,9 +79,22 @@ def remove_brackets_with_contents(text: str) -> str:
 def post_clean(first: str) -> str:
     """Post-cleanup of the extracted first meaning.
     - If only symbols remain (= ~ etc.), return empty so caller falls back.
+    - If only single-letter ASCII U/C remain, also reject.
     - Strip orphan brackets (one side only).
     """
     s = first.strip()
+    if not s:
+        return ""
+
+    # Remove standalone uppercase U / C tokens (countable/uncountable markers)
+    # that may have leaked from 〈U〉〈C〉〈U/C〉 brackets
+    s = re.sub(r'(?<![A-Za-z])[UC](?![A-Za-z])', '', s)
+    s = s.strip()
+
+    # Cut off after ; or ； (anything after a semicolon is supplementary)
+    s = re.split(r'[;；]', s)[0]
+    s = s.strip()
+
     if not s:
         return ""
 
@@ -100,26 +117,55 @@ def post_clean(first: str) -> str:
     return s.strip()
 
 
+def split_top_level(text: str, separators: set[str]) -> list[str]:
+    """Split text by separators, but ONLY at top level (outside any brackets)."""
+    open_chars = set("([{（〈《【｟『〖")
+    pair = {
+        '(': ')', '[': ']', '{': '}',
+        '（': '）', '〈': '〉', '《': '》', '【': '】', '｟': '｠', '『': '』', '〖': '〗'
+    }
+    parts = []
+    buf = []
+    stack = []
+    for ch in text:
+        if ch in open_chars:
+            stack.append(pair[ch])
+            buf.append(ch)
+        elif stack and ch == stack[-1]:
+            stack.pop()
+            buf.append(ch)
+        elif not stack and ch in separators:
+            parts.append(''.join(buf))
+            buf = []
+        else:
+            buf.append(ch)
+    if buf:
+        parts.append(''.join(buf))
+    return parts
+
+
 def extract_first_meaning(meaning_ja: str) -> str:
     """Extract the first/primary meaning for karuta display."""
     if not meaning_ja:
         return ""
 
-    # Step 1: Split by / or ; or ； to get individual meanings (BEFORE bracket removal)
-    parts = re.split(r'\s*/\s*|;\s*|；\s*', meaning_ja.strip())
-    parts = [p for p in parts if p.strip()]
+    # Step 1: Split by / or ; or ； at TOP LEVEL only (so brackets are preserved)
+    parts = split_top_level(meaning_ja.strip(), {'/', ';', '；'})
+    parts = [p.strip() for p in parts if p.strip()]
 
     if not parts:
         return ""
 
     # Try each part in order, return first that survives processing + post-cleanup
     for part in parts:
-        # 1. Cut at 《 (everything from 《 onward is supplementary)
-        candidate = part.split('《')[0]
+        # 1. Cut at 《 (everything from 《 onward is supplementary) — top level only
+        cuts = split_top_level(part, {'《'})
+        candidate = cuts[0] if cuts else part
         # 2. Remove all bracket types and their contents
         candidate = remove_brackets_with_contents(candidate)
-        # 3. Take text before first comma (, or ，)
-        candidate = re.split(r'[,，]', candidate)[0]
+        # 3. Take text before first comma (, or ， or 、) — top level only
+        commaCuts = split_top_level(candidate, {',', '，', '、'})
+        candidate = commaCuts[0] if commaCuts else candidate
         # 4. Normalize whitespace
         candidate = re.sub(r'\s+', ' ', candidate).strip()
         # 5. Post-cleanup
@@ -210,6 +256,18 @@ def build_database():
 
                 first_meaning = extract_first_meaning(meaning_ja)
                 if not first_meaning or len(first_meaning) < 1:
+                    skipped += 1
+                    continue
+
+                # Filter: reject first_meaning containing "=" or "＝"
+                if '=' in first_meaning or '＝' in first_meaning:
+                    skipped += 1
+                    continue
+
+                # Filter: reject first_meaning containing ASCII letters,
+                # EXCEPT for a short allowlist of headwords where ascii is expected
+                ALLOWED_ASCII_HEADWORDS = {"either", "molecule", "account"}
+                if re.search(r'[a-zA-Z]', first_meaning) and headword not in ALLOWED_ASCII_HEADWORDS:
                     skipped += 1
                     continue
 

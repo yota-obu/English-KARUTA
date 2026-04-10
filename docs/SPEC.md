@@ -24,7 +24,7 @@
 - **CEFR-J Vocabulary Profile** (レベル別CSV)
   - `CEFR-J/CEFR-J_A1.csv` ~ `CEFR-J_B2.csv`
   - 商用無料 (要引用: Tono Laboratory, TUFS)
-  - 7,743エントリ (A1: 1,123 / A2: 1,406 / B1: 2,437 / B2: 2,777)
+  - 7,658エントリ (A1: 1,097 / A2: 1,390 / B1: 2,411 / B2: 2,760)
 
 ### 各エントリに含まれるフィールド
 - `headword` — 英単語

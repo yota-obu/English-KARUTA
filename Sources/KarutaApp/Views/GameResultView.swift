@@ -1,13 +1,42 @@
 import SwiftUI
+import SwiftData
 
 struct GameResultView: View {
     let viewModel: GameViewModel
     let onDismiss: () -> Void
 
+    @Query private var allSessions: [GameSession]
     @State private var showShare = false
     @State private var appearAnimation = false
 
     private var isMaxCorrect: Bool { viewModel.stage.mode == .maxCorrect }
+
+    /// Detects whether the CURRENT session is a new best record.
+    /// maxCorrect: highest correctCount is best.
+    /// timeAttack: lowest elapsedSeconds (among completed) is best.
+    private var isNewRecord: Bool {
+        let levelStr = viewModel.stage.level.rawValue
+        let modeStr = viewModel.stage.mode.rawValue
+        // Exclude the currently-playing session (it's already saved before result shows)
+        let prior = allSessions.filter {
+            $0.cefrLevel == levelStr &&
+            $0.gameMode == modeStr &&
+            $0.topic == nil &&
+            $0.id != viewModel.lastSessionId
+        }
+        switch viewModel.stage.mode {
+        case .maxCorrect:
+            guard viewModel.correctCount > 0 else { return false }
+            let bestPrior = prior.map(\.correctPairs).max() ?? 0
+            return viewModel.correctCount > bestPrior
+        case .timeAttack:
+            guard viewModel.phase.isCompleted else { return false }
+            let elapsed = viewModel.timeLimit - viewModel.timeRemaining
+            let bestPrior = prior.filter(\.isCompleted).map(\.elapsedSeconds).min()
+            guard let best = bestPrior else { return true }
+            return elapsed < best
+        }
+    }
 
     private var headerTitle: String {
         if isMaxCorrect {
@@ -79,6 +108,27 @@ struct GameResultView: View {
                     Text("\(viewModel.stage.level.rawValue) • \(viewModel.stage.mode.shortName)")
                         .font(FontStyles.bodyMedium)
                         .foregroundStyle(ColorPalette.textSecondary)
+                }
+
+                // NEW RECORD badge
+                if isNewRecord {
+                    HStack(spacing: 6) {
+                        Image(systemName: "crown.fill")
+                            .foregroundStyle(ColorPalette.streakGold)
+                        Text("NEW RECORD!")
+                            .font(.system(size: 18, weight: .heavy, design: .rounded))
+                            .foregroundStyle(ColorPalette.streakGold)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(ColorPalette.streakGold.opacity(0.15))
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(ColorPalette.streakGold.opacity(0.4), lineWidth: 1.5)
+                    )
+                    .scaleEffect(appearAnimation ? 1.0 : 0.5)
+                    .opacity(appearAnimation ? 1.0 : 0)
                 }
 
                 // Primary metric (pairs for 1m, time for 15p)

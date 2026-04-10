@@ -140,27 +140,36 @@ struct GameView: View {
 
             Spacer(minLength: 16)
 
-            // Card Columns
+            // Card Columns — use indices so that changing GameCard.id triggers
+            // a full view recreation with the transition applied.
             HStack(alignment: .center, spacing: GameConstants.columnSpacing) {
                 VStack(spacing: GameConstants.cardSpacing) {
-                    ForEach(viewModel.englishCards) { card in
+                    ForEach(viewModel.englishCards.indices, id: \.self) { idx in
+                        let card = viewModel.englishCards[idx]
                         GameCardView(card: card) {
                             viewModel.selectCard(card, column: .english)
                         }
+                        .id(card.id)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }
                 .frame(maxWidth: .infinity)
 
                 VStack(spacing: GameConstants.cardSpacing) {
-                    ForEach(viewModel.japaneseCards) { card in
+                    ForEach(viewModel.japaneseCards.indices, id: \.self) { idx in
+                        let card = viewModel.japaneseCards[idx]
                         GameCardView(card: card) {
                             viewModel.selectCard(card, column: .japanese)
                         }
+                        .id(card.id)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
                 }
                 .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 12)
+            .animation(.easeInOut(duration: 0.6), value: viewModel.englishCards.map(\.id))
+            .animation(.easeInOut(duration: 0.6), value: viewModel.japaneseCards.map(\.id))
 
             Spacer(minLength: 24)
         }

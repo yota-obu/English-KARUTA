@@ -57,11 +57,19 @@ final class GameViewModel {
 
     private var sessionId: UUID = UUID()
     private var startTime: Date?
+    /// ID of the saved session for this play (used for "is new record" lookup)
+    var lastSessionId: UUID?
 
     /// Track entries already counted as wrong in this session (avoid double-counting on repeat misses)
     private var wronglyAttemptedInSession: Set<Int64> = []
     /// Cancellation flag set when stopGame() is called - blocks further sound/haptic
     private var gameCancelled = false
+    /// Pending debounced refill task — restarts on every new match so consecutive
+    /// matches accumulate before a single batched refill happens.
+    private var refillTask: Task<Void, Never>?
+    /// Earliest deadline by which the refill MUST happen, even if more matches keep coming.
+    /// Set the first time a match occurs while no refill is pending. Cleared after refill.
+    private var refillDeadline: Date?
 
     init(stage: Stage, dictionaryService: DictionaryService, historyStore: GameHistoryStore, topic: String? = nil, categoryRank: CategoryRank? = nil) {
         self.stage = stage
@@ -78,6 +86,7 @@ final class GameViewModel {
     func startGame() async {
         gameCancelled = false
         wronglyAttemptedInSession = []
+        refillDeadline = nil
         phase = .loading
         hapticManager.prepare()
 
@@ -160,6 +169,8 @@ final class GameViewModel {
         gameCancelled = true
         timerTask?.cancel()
         timerTask = nil
+        refillTask?.cancel()
+        refillTask = nil
         soundManager.stopAllSE()
     }
 
@@ -167,6 +178,8 @@ final class GameViewModel {
     func stopGame() {
         timerTask?.cancel()
         timerTask = nil
+        refillTask?.cancel()
+        refillTask = nil
         soundManager.stopCountdown()
     }
 
@@ -218,50 +231,78 @@ final class GameViewModel {
             hapticManager.streakMilestone()
         }
 
-        Task { @MainActor in
-            // Cards stay as .matched (invisible via opacity) for 0.3s
-            try? await Task.sleep(for: .milliseconds(300))
-            if gameCancelled { return }
-
-            // Time-attack mode: stage clear when target pairs reached
-            if stage.mode == .timeAttack && pairsCompleted >= stage.totalPairs {
+        // Time-attack mode: stage clear when target pairs reached
+        if stage.mode == .timeAttack && pairsCompleted >= stage.totalPairs {
+            // Slight delay so the matched fade is visible before result
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(300))
+                if gameCancelled { return }
                 phase = .completed
                 stopGame()
                 soundManager.playGameOver()
                 hapticManager.gameComplete()
                 saveResult(completed: true)
-                return
             }
+            return
+        }
 
-            // Wait longer before refilling (lets the player see the match settle,
-            // and lets concurrent matches accumulate before refill).
-            try? await Task.sleep(for: .milliseconds(1100))
-            if gameCancelled { return }
+        // Debounced refill with a max deadline.
+        // - Each new match resets the wait to 1.1s
+        // - But the refill MUST happen within 1.8s of the first pending match
+        let now = Date()
+        let debounceMs: Int = 1100
+        let maxWaitMs: Int = 1800
+        if refillDeadline == nil {
+            refillDeadline = now.addingTimeInterval(Double(maxWaitMs) / 1000.0)
+        }
+        let deadline = refillDeadline ?? now.addingTimeInterval(Double(maxWaitMs) / 1000.0)
+        let untilDeadlineMs = max(0, Int(deadline.timeIntervalSince(now) * 1000))
+        let waitMs = min(debounceMs, untilDeadlineMs)
 
+        refillTask?.cancel()
+        refillTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(waitMs))
+            if Task.isCancelled || gameCancelled { return }
+            refillDeadline = nil
             refillNextCard()
         }
     }
 
-    /// Refill one matched slot with a new entry.
-    /// If 2+ matched slots exist simultaneously, pick a RANDOM matched slot
-    /// in the Japanese column to refill (instead of the first one), so the new
-    /// english/japanese pair is less likely to land in the same row.
+    /// Refill ALL currently matched slots at once with new entries.
+    /// When multiple slots are matched simultaneously, english and japanese
+    /// mappings are shuffled independently so the pair order is scrambled.
     private func refillNextCard() {
-        guard queueIndex < wordQueue.count else { return }
-
-        let entry = wordQueue[queueIndex]
-        queueIndex += 1
-
-        // English: replace the first matched slot
-        replaceMatchedSlot(in: &englishCards, with: entry, column: .english)
-
-        // Japanese: if multiple matched slots exist, pick a random one
+        let engMatchedIndices = englishCards.indices.filter { englishCards[$0].state == .matched }
         let jpnMatchedIndices = japaneseCards.indices.filter { japaneseCards[$0].state == .matched }
-        if let targetIdx = jpnMatchedIndices.randomElement() {
-            let newCard = GameCard(entryId: entry.id, displayText: entry.firstMeaning, column: .japanese)
-            withAnimation(.spring(response: GameConstants.springResponse, dampingFraction: GameConstants.springDamping)) {
-                japaneseCards[targetIdx] = newCard
-            }
+        let count = min(engMatchedIndices.count, jpnMatchedIndices.count)
+        guard count > 0 else { return }
+        guard queueIndex + count <= wordQueue.count else {
+            // Not enough remaining entries — fall back to partial refill
+            let remain = wordQueue.count - queueIndex
+            if remain <= 0 { return }
+            refillSingleBatch(entryCount: remain, engSlots: engMatchedIndices, jpnSlots: jpnMatchedIndices)
+            return
+        }
+        refillSingleBatch(entryCount: count, engSlots: engMatchedIndices, jpnSlots: jpnMatchedIndices)
+    }
+
+    private func refillSingleBatch(entryCount: Int, engSlots: [Int], jpnSlots: [Int]) {
+        let entries = (0..<entryCount).map { i -> DictionaryEntry in
+            let e = wordQueue[queueIndex + i]
+            return e
+        }
+        queueIndex += entryCount
+
+        // Shuffle independently so row position doesn't correlate between columns
+        let engOrder = Array(engSlots.prefix(entryCount)).shuffled()
+        let jpnOrder = Array(jpnSlots.prefix(entryCount)).shuffled()
+
+        for i in 0..<entryCount {
+            let entry = entries[i]
+            let engIdx = engOrder[i]
+            let jpnIdx = jpnOrder[i]
+            englishCards[engIdx] = GameCard(entryId: entry.id, displayText: entry.headword, column: .english)
+            japaneseCards[jpnIdx] = GameCard(entryId: entry.id, displayText: entry.firstMeaning, column: .japanese)
         }
     }
 
@@ -315,17 +356,6 @@ final class GameViewModel {
 
         englishCards = engCards.shuffled()
         japaneseCards = jpnCards.shuffled()
-    }
-
-    /// Replace the first .matched card in a column with a new word (same position).
-    /// The entry is provided externally so both columns receive a properly paired entry.
-    private func replaceMatchedSlot(in cards: inout [GameCard], with entry: DictionaryEntry, column: CardColumn) {
-        guard let idx = cards.firstIndex(where: { $0.state == .matched }) else { return }
-        let displayText = column == .english ? entry.headword : entry.firstMeaning
-        let newCard = GameCard(entryId: entry.id, displayText: displayText, column: column)
-        withAnimation(.spring(response: GameConstants.springResponse, dampingFraction: GameConstants.springDamping)) {
-            cards[idx] = newCard
-        }
     }
 
     private func selectCardInList(_ card: GameCard, in cards: inout [GameCard]) {
@@ -404,6 +434,7 @@ final class GameViewModel {
             categoryRank: categoryRank?.rawValue,
             gameMode: stage.mode.rawValue
         )
+        lastSessionId = session.id
         historyStore.saveSession(session)
     }
 }
