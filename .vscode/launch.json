@@ -1,0 +1,23 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "name": "Debug KarutaApp",
+            "preLaunchTask": "swift: Build Debug KarutaApp",
+            "target": "KarutaApp",
+            "configuration": "debug",
+            "cwd": "${workspaceFolder:English_flashcard_game}"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:English_flashcard_game}",
+            "name": "Release KarutaApp",
+            "target": "KarutaApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release KarutaApp"
+        }
+    ]
+}

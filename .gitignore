@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+
+# Swift / SPM
+/.build
+/Packages
+.swiftpm/
+
+# Xcode (XcodeGen で再生成可能)
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+*.xcuserstate
+*.moved-aside
+*.pbxuser
+!default.pbxuser
+*.mode1v3
+!default.mode1v3
+*.mode2v3
+!default.mode2v3
+*.perspectivev3
+!default.perspectivev3
+
+# Build / Resources (auto-generated)
+Sources/KarutaApp/Resources/dictionary.sqlite
+
+# Tools data (large source data, downloadable)
+Tools/data/
+
+# IDE
+.idea/
+.vs/
+
+# Logs / temp
+*.log
+*.tmp
+.env
+.env.*
+
+# Secrets (絶対にコミットしない)
+*.p12
+*.mobileprovision
+*.cer
+*.certSigningRequest
+GoogleService-Info.plist
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
