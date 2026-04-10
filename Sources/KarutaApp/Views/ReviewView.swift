@@ -3,11 +3,10 @@ import SwiftData
 
 struct ReviewView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var records: [WordRecord] = []
+    @Query(sort: \WordRecord.headword) private var allRecords: [WordRecord]
     @State private var selectedRecord: WordRecord?
     @State private var filterLevel: String? = nil
     @State private var filterMode: FilterMode = .wrong
-    @State private var counts: (wrong: Int, mastered: Int, total: Int) = (0, 0, 0)
 
     private let dictionaryService = DictionaryService.shared
 
@@ -15,14 +14,28 @@ struct ReviewView: View {
         case wrong = "Wrong"
         case mastered = "Mastered"
         case all = "All"
+    }
 
-        var storeMode: ReviewFilterMode {
-            switch self {
-            case .wrong: return .wrong
-            case .mastered: return .mastered
-            case .all: return .all
+    private var records: [WordRecord] {
+        allRecords.filter { record in
+            // level filter
+            if let lvl = filterLevel, record.cefrLevel != lvl { return false }
+            // mode filter
+            switch filterMode {
+            case .wrong: return record.masteredAt == nil
+            case .mastered: return record.masteredAt != nil
+            case .all: return true
             }
         }
+    }
+
+    private var counts: (wrong: Int, mastered: Int, total: Int) {
+        let filtered = allRecords.filter { record in
+            if let lvl = filterLevel, record.cefrLevel != lvl { return false }
+            return true
+        }
+        let mastered = filtered.filter { $0.isMastered }.count
+        return (filtered.count - mastered, mastered, filtered.count)
     }
 
     var body: some View {
@@ -51,7 +64,6 @@ struct ReviewView: View {
         }
         .navigationTitle("Review")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { loadData() }
         .fullScreenCover(item: $selectedRecord) { record in
             WordDetailSheet(record: record)
         }
@@ -66,7 +78,6 @@ struct ReviewView: View {
                 ForEach(FilterMode.allCases, id: \.self) { mode in
                     filterTabButton(mode.rawValue, selected: filterMode == mode) {
                         filterMode = mode
-                        loadData()
                     }
                 }
             }
@@ -79,12 +90,10 @@ struct ReviewView: View {
                 HStack(spacing: 6) {
                     filterChip("All", selected: filterLevel == nil) {
                         filterLevel = nil
-                        loadData()
                     }
                     ForEach(CEFRLevel.allCases) { level in
                         filterChip(level.rawValue, selected: filterLevel == level.rawValue) {
                             filterLevel = level.rawValue
-                            loadData()
                         }
                     }
                 }
@@ -133,12 +142,16 @@ struct ReviewView: View {
     private func filterChip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title)
-                .font(FontStyles.caption)
+                .font(FontStyles.bodyMedium)
+                .fontWeight(.semibold)
                 .foregroundStyle(selected ? .white : ColorPalette.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .frame(minWidth: 56)
                 .background(Capsule().fill(selected ? ColorPalette.accentPrimary : ColorPalette.backgroundCard))
+                .shadow(color: selected ? ColorPalette.liquidShadowColor : .clear, radius: 6, y: 3)
         }
+        .buttonStyle(LiquidPressStyle())
     }
 
     // MARK: - Word Row
@@ -186,7 +199,6 @@ struct ReviewView: View {
             Button {
                 let store = GameHistoryStore(modelContext: modelContext)
                 store.toggleWordMastered(record)
-                loadData()
             } label: {
                 Image(systemName: record.isMastered ? "checkmark.circle.fill" : "circle")
                     .font(.title2)
@@ -219,11 +231,6 @@ struct ReviewView: View {
         }
     }
 
-    private func loadData() {
-        let store = GameHistoryStore(modelContext: modelContext)
-        records = store.fetchWordRecords(mode: filterMode.storeMode, level: filterLevel)
-        counts = store.wordRecordCounts(level: filterLevel)
-    }
 }
 
 // MARK: - Word Detail Sheet

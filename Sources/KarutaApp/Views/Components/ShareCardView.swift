@@ -5,7 +5,7 @@ struct ShareCardView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Text("Karuta")
+            Text("英単語かるた")
                 .font(FontStyles.titleLarge)
                 .foregroundStyle(
                     LinearGradient(
@@ -14,7 +14,7 @@ struct ShareCardView: View {
                     )
                 )
 
-            Text("\(session.cefrLevel) Stage \(session.stageNumber)")
+            Text("\(session.cefrLevel) • \(session.modeDisplay)")
                 .font(FontStyles.bodyLarge)
                 .foregroundStyle(ColorPalette.textSecondary)
 

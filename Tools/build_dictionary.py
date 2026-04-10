@@ -41,64 +41,93 @@ def extract_topics(supplement: str) -> str:
 
 def remove_brackets_with_contents(text: str) -> str:
     """Remove all bracket types and their contents.
-    Uses re.DOTALL so multi-line bracket contents are also removed.
-    Handles: () （） 〈〉 《》 【】 [[]]
+    Order matters - process [[...]] FIRST before [...] single brackets.
+    Handles: () （） 〈〉 《》 【】 [[]] [] ｟｠ * **
     Keeps: 『』 (removes only brackets, keeps contents)
     """
-    # Remove brackets WITH contents (including newlines/spaces)
+    # 1. Double square brackets [[X]] -> X (keep content) — must be BEFORE single [...]
+    text = re.sub(r'\[\[([^\]]*)\]\]', r'\1', text, flags=re.DOTALL)
+
+    # 2. Single square brackets [X] -> remove brackets AND content
+    text = re.sub(r'\[[^\]]*\]', '', text, flags=re.DOTALL)
+
+    # 3. Standard brackets with contents
     text = re.sub(r'\([^)]*\)', '', text, flags=re.DOTALL)
+    text = re.sub(r'(?<!\u300a)（[^）]*）', '', text, flags=re.DOTALL)  # avoid 《（）》 conflict
     text = re.sub(r'（[^）]*）', '', text, flags=re.DOTALL)
     text = re.sub(r'〈[^〉]*〉', '', text, flags=re.DOTALL)
     text = re.sub(r'《[^》]*》', '', text, flags=re.DOTALL)
     text = re.sub(r'【[^】]*】', '', text, flags=re.DOTALL)
-    text = re.sub(r'\[\[[^\]]*\]\]', '', text, flags=re.DOTALL)
+    text = re.sub(r'｟[^｠]*｠', '', text, flags=re.DOTALL)
 
-    # Keep contents of 『』 but remove brackets
+    # 4. Keep contents of 『』 but remove brackets
     text = text.replace('『', '').replace('』', '')
 
-    # Remove single quotes (curly variants too)
+    # 5. Remove asterisks (markdown-like emphasis): *text* or **text** -> text
+    text = re.sub(r'\*+', '', text)
+
+    # 6. Remove single quotes (curly variants too)
     text = text.replace("'", "").replace("\u2018", "").replace("\u2019", "")
 
     return text
 
 
-def extract_first_meaning(meaning_ja: str) -> str:
-    """Extract the first/primary meaning for karuta display.
-    Order matters:
-    1. Remove all brackets+contents FIRST (so internal / and , don't break splitting)
-    2. Split by / or ; to get individual meanings
-    3. Take first non-empty meaning
-    4. Take text before first comma ,
-    5. Normalize whitespace (collapse multi-line/multi-space)
+def post_clean(first: str) -> str:
+    """Post-cleanup of the extracted first meaning.
+    - If only symbols remain (= ~ etc.), return empty so caller falls back.
+    - Strip orphan brackets (one side only).
     """
+    s = first.strip()
+    if not s:
+        return ""
+
+    # Reject if only symbols (=, ~, punctuation, whitespace)
+    if re.fullmatch(r'[=~\-_,.;:。、・\s]+', s):
+        return ""
+
+    # Remove orphan opening brackets (no matching close)
+    open_to_close = {'(': ')', '（': '）', '〈': '〉', '《': '》', '【': '】', '｟': '｠'}
+    close_to_open = {v: k for k, v in open_to_close.items()}
+
+    # If no matching open found for a close char anywhere in s, drop it
+    for close_ch, open_ch in close_to_open.items():
+        if close_ch in s and open_ch not in s:
+            s = s.replace(close_ch, '')
+    for open_ch, close_ch in open_to_close.items():
+        if open_ch in s and close_ch not in s:
+            s = s.replace(open_ch, '')
+
+    return s.strip()
+
+
+def extract_first_meaning(meaning_ja: str) -> str:
+    """Extract the first/primary meaning for karuta display."""
     if not meaning_ja:
         return ""
 
-    # Step 1: Remove all brackets and contents first
-    cleaned = remove_brackets_with_contents(meaning_ja)
-
-    # Step 2: Split by / or ; to get individual meanings
-    parts = re.split(r'\s*/\s*|;\s*', cleaned)
+    # Step 1: Split by / or ; or ； to get individual meanings (BEFORE bracket removal)
+    parts = re.split(r'\s*/\s*|;\s*|；\s*', meaning_ja.strip())
     parts = [p for p in parts if p.strip()]
 
     if not parts:
         return ""
 
-    # Step 3: Take first meaningful part
-    first = parts[0]
+    # Try each part in order, return first that survives processing + post-cleanup
+    for part in parts:
+        # 1. Cut at 《 (everything from 《 onward is supplementary)
+        candidate = part.split('《')[0]
+        # 2. Remove all bracket types and their contents
+        candidate = remove_brackets_with_contents(candidate)
+        # 3. Take text before first comma (, or ，)
+        candidate = re.split(r'[,，]', candidate)[0]
+        # 4. Normalize whitespace
+        candidate = re.sub(r'\s+', ' ', candidate).strip()
+        # 5. Post-cleanup
+        candidate = post_clean(candidate)
+        if candidate:
+            return candidate
 
-    # Step 4: Take text before first comma
-    first = re.split(r'[,]', first)[0]
-
-    # Step 5: Normalize whitespace - collapse newlines and multiple spaces
-    first = re.sub(r'\s+', ' ', first).strip()
-
-    # Fallback: try next part if empty
-    if not first and len(parts) > 1:
-        second = re.split(r'[,]', parts[1])[0]
-        first = re.sub(r'\s+', ' ', second).strip()
-
-    return first
+    return ""
 
 
 def extract_all_meanings(meaning_ja: str) -> list[str]:

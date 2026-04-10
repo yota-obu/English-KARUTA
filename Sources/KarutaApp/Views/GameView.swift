@@ -8,37 +8,18 @@ struct GameView: View {
         ZStack {
             ColorPalette.backgroundGradient.ignoresSafeArea()
 
-            VStack {
-                // Always visible: back button + debug info
-                HStack {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(ColorPalette.textSecondary)
-                    }
-                    .padding(.leading, 16)
-
-                    Spacer()
-                }
-                .padding(.top, 8)
-
-                Spacer()
-
-                // Phase content
-                switch viewModel.phase {
-                case .loading:
-                    loadingView
-                case .countdown:
-                    countdownOverlay
-                case .playing:
-                    gameContent
-                case .completed, .timeUp:
-                    GameResultView(viewModel: viewModel, onDismiss: { dismiss() })
-                case .error(let message):
-                    errorView(message)
-                }
-
-                Spacer()
+            // Phase content
+            switch viewModel.phase {
+            case .loading:
+                loadingView
+            case .countdown:
+                countdownOverlay
+            case .playing:
+                gameContent
+            case .completed, .timeUp:
+                GameResultView(viewModel: viewModel, onDismiss: { dismiss() })
+            case .error(let message):
+                errorView(message)
             }
         }
         .preferredColorScheme(.light)
@@ -92,49 +73,76 @@ struct GameView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.5), value: viewModel.countdownValue)
     }
 
+    // MARK: - Helpers
+
+    private var timeString: String {
+        let total = max(0, viewModel.timeRemaining)
+        let mins = Int(total) / 60
+        let secs = Int(total) % 60
+        return String(format: "%d:%02d", mins, secs)
+    }
+
+    private var timerColor: Color {
+        if viewModel.timeRemaining <= 5 {
+            return ColorPalette.timerCritical
+        } else if viewModel.timeRemaining <= 10 {
+            return ColorPalette.timerOrange
+        }
+        return ColorPalette.textPrimary
+    }
+
     // MARK: - Game Content
 
     private var gameContent: some View {
-        VStack(spacing: 12) {
-            // Header: Score + Streak + Timer
+        VStack(spacing: 0) {
+            // Top: Quit button (left aligned)
             HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Score")
-                        .font(FontStyles.caption)
-                        .foregroundStyle(ColorPalette.textTertiary)
-                    Text("\(viewModel.score)")
-                        .font(FontStyles.titleMedium)
-                        .foregroundStyle(ColorPalette.textPrimary)
+                Button {
+                    HapticManager.shared.cardTap()
+                    viewModel.cancelGame()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(ColorPalette.slate)
+                        .frame(width: 36, height: 36)
+                        .background(Circle().fill(ColorPalette.backgroundCard))
+                        .shadow(color: ColorPalette.liquidShadowColor, radius: 6, y: 3)
                 }
-
                 Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
 
-                StreakBadgeView(streak: viewModel.streak)
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("Pairs")
-                        .font(FontStyles.caption)
-                        .foregroundStyle(ColorPalette.textTertiary)
-                    Text("\(viewModel.pairsCompleted)/\(viewModel.stage.totalPairs)")
-                        .font(FontStyles.titleSmall)
+            // Big metric block — pushed lower so it sits above the cards
+            VStack(spacing: 8) {
+                if viewModel.stage.mode == .maxCorrect {
+                    Text("\(viewModel.pairsCompleted)")
+                        .font(.system(size: 120, weight: .heavy, design: .rounded))
                         .foregroundStyle(ColorPalette.textPrimary)
+                        .monospacedDigit()
+                    Text(timeString)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(timerColor)
+                        .monospacedDigit()
+                } else {
+                    Text("\(viewModel.pairsCompleted) / \(viewModel.stage.totalPairs)")
+                        .font(.system(size: 80, weight: .heavy, design: .rounded))
+                        .foregroundStyle(ColorPalette.textPrimary)
+                        .monospacedDigit()
+                    Text(timeString)
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundStyle(timerColor)
+                        .monospacedDigit()
                 }
             }
-            .padding(.horizontal, 20)
+            .padding(.top, 24)
 
-            TimerBarView(progress: viewModel.timerProgress, timeRemaining: viewModel.timeRemaining)
-                .padding(.horizontal, 20)
+            Spacer(minLength: 16)
 
             // Card Columns
-            HStack(alignment: .top, spacing: GameConstants.columnSpacing) {
-                // English column
+            HStack(alignment: .center, spacing: GameConstants.columnSpacing) {
                 VStack(spacing: GameConstants.cardSpacing) {
-                    Text("English")
-                        .font(FontStyles.caption)
-                        .foregroundStyle(ColorPalette.textTertiary)
-
                     ForEach(viewModel.englishCards) { card in
                         GameCardView(card: card) {
                             viewModel.selectCard(card, column: .english)
@@ -143,12 +151,7 @@ struct GameView: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                // Japanese column
                 VStack(spacing: GameConstants.cardSpacing) {
-                    Text("日本語")
-                        .font(FontStyles.caption)
-                        .foregroundStyle(ColorPalette.textTertiary)
-
                     ForEach(viewModel.japaneseCards) { card in
                         GameCardView(card: card) {
                             viewModel.selectCard(card, column: .japanese)
@@ -159,13 +162,7 @@ struct GameView: View {
             }
             .padding(.horizontal, 12)
 
-            Spacer()
-
-            // Score Popup
-            if let popup = viewModel.scorePopup {
-                ScorePopupView(info: popup)
-            }
+            Spacer(minLength: 24)
         }
-        .padding(.top, 8)
     }
 }

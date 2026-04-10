@@ -1,11 +1,28 @@
 import SwiftUI
 import SwiftData
+import StoreKit
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var soundEnabled = SoundManager.shared.isEnabled
+    @Environment(\.requestReview) private var requestReview
+    @State private var seEnabled = SoundManager.shared.isSEEnabled
     @State private var hapticEnabled = HapticManager.shared.isEnabled
     @State private var showClearConfirm = false
+    @State private var showShareSheet = false
+
+    // TODO: 公開時に正しい値へ差し替える
+    private let feedbackEmail = "support@example.com"
+    private let appStoreId = "id0000000000"
+    private var appStoreURL: URL {
+        URL(string: "https://apps.apple.com/app/\(appStoreId)")!
+    }
+    private var appStoreReviewURL: URL {
+        URL(string: "https://apps.apple.com/app/\(appStoreId)?action=write-review")!
+    }
+
+    private var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
+    }
 
     var body: some View {
         ZStack {
@@ -13,12 +30,12 @@ struct SettingsView: View {
 
             List {
                 Section {
-                    Toggle(isOn: $soundEnabled) {
+                    Toggle(isOn: $seEnabled) {
                         Label("Sound Effects", systemImage: "speaker.wave.2.fill")
                             .foregroundStyle(ColorPalette.textPrimary)
                     }
-                    .onChange(of: soundEnabled) { _, val in
-                        SoundManager.shared.isEnabled = val
+                    .onChange(of: seEnabled) { _, val in
+                        SoundManager.shared.isSEEnabled = val
                     }
 
                     Toggle(isOn: $hapticEnabled) {
@@ -47,36 +64,73 @@ struct SettingsView: View {
                 .listRowBackground(ColorPalette.backgroundCard)
 
                 Section {
-                    creditRow(
-                        "『CEFR-J Wordlist Version 1.6』",
-                        detail: "東京外国語大学投野由紀夫研究室.（URL: http://www.cefr-j.org/download.html より2026年4月ダウンロード）"
-                    )
-                    creditRow(
-                        "『DiQt English-Japanese Dictionary』",
-                        detail: "BooQs Inc."
-                    )
+                    NavigationLink {
+                        PrivacyPolicyView()
+                    } label: {
+                        Label("Privacy Policy", systemImage: "lock.shield.fill")
+                            .foregroundStyle(ColorPalette.textPrimary)
+                    }
+
+                    Button {
+                        sendFeedback()
+                    } label: {
+                        Label("Send Feedback", systemImage: "envelope.fill")
+                            .foregroundStyle(ColorPalette.textPrimary)
+                    }
+
+                    Button {
+                        showShareSheet = true
+                    } label: {
+                        Label("Share App", systemImage: "square.and.arrow.up.fill")
+                            .foregroundStyle(ColorPalette.textPrimary)
+                    }
+
+                    Button {
+                        requestReview()
+                    } label: {
+                        Label("Rate App", systemImage: "star.fill")
+                            .foregroundStyle(ColorPalette.textPrimary)
+                    }
                 } header: {
-                    Text("Credits")
+                    Text("Support")
                         .foregroundStyle(ColorPalette.textTertiary)
                 }
                 .listRowBackground(ColorPalette.backgroundCard)
 
                 Section {
+                    creditRow(
+                        "CEFR-J Wordlist Version 1.6",
+                        detail: "Yukio Tono Laboratory, Tokyo University of Foreign Studies. (Downloaded from http://www.cefr-j.org/download.html in April 2026)"
+                    )
+                    creditRow(
+                        "DiQt English-Japanese Dictionary",
+                        detail: "BooQs Inc."
+                    )
+                    creditRow(
+                        "Sound Effects",
+                        detail: "Pocket Sound – https://pocket-se.info/"
+                    )
+
                     HStack {
                         Text("Version")
                             .foregroundStyle(ColorPalette.textPrimary)
                         Spacer()
-                        Text("1.0.0")
+                        Text(appVersion)
                             .foregroundStyle(ColorPalette.textTertiary)
                     }
                 }
-                .listRowBackground(ColorPalette.backgroundCard)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             }
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-                .alert("Clear All History?", isPresented: $showClearConfirm) {
+        .onAppear {
+            seEnabled = SoundManager.shared.isSEEnabled
+            hapticEnabled = HapticManager.shared.isEnabled
+        }
+        .alert("Clear All History?", isPresented: $showClearConfirm) {
             Button("Cancel", role: .cancel) {}
             Button("Clear", role: .destructive) {
                 let store = GameHistoryStore(modelContext: modelContext)
@@ -84,6 +138,22 @@ struct SettingsView: View {
             }
         } message: {
             Text("This will permanently delete all game records and review data.")
+        }
+        .sheet(isPresented: $showShareSheet) {
+            ShareSheet(items: [
+                "英単語かるたで楽しく語彙力アップ!",
+                appStoreURL
+            ])
+        }
+    }
+
+    private func sendFeedback() {
+        let subject = "英単語かるた Feedback"
+        let body = "\n\n---\nApp Version: \(appVersion)\niOS: \(UIDevice.current.systemVersion)\nDevice: \(UIDevice.current.model)"
+        let encodedSubject = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        let encodedBody = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? ""
+        if let url = URL(string: "mailto:\(feedbackEmail)?subject=\(encodedSubject)&body=\(encodedBody)") {
+            UIApplication.shared.open(url)
         }
     }
 

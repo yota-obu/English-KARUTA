@@ -1,9 +1,11 @@
-# KarutaApp - 英単語カルタゲーム 仕様書
+# 英単語かるた 仕様書
 
 ## 概要
 
-デュオリンゴの「無限カルタ」に着想を得た、タイムアタック型の英単語・日本語カルタゲームiOSアプリ。
+デュオリンゴの「無限カルタ」に着想を得た、タイムアタック型の英単語・日本語かるたゲームiOSアプリ。
 英語の単語カードと日本語訳カードをマッチングするゲーム。
+
+**アプリ名**: 英単語かるた (English Vocabulary Karuta)
 
 ## 技術構成
 
@@ -28,7 +30,7 @@
 - `headword` — 英単語
 - `pos` — 品詞 (noun, verb, adjective, adverb, etc.)
 - `cefr_level` — CEFRレベル (A1, A2, B1, B2)
-- `first_meaning` — カルタ用の第1訳 (クリーンアップ済み)
+- `first_meaning` — かるた用の第1訳 (クリーンアップ済み)
 - `meaning_raw` — 元のCSVの日本語訳 (全文保持)
 - `all_meanings` — `/`区切りで分割した訳のリスト
 - `ipa` — IPA発音記号
@@ -36,7 +38,7 @@
 - `example_en` — 英語例文
 - `example_ja` — 日本語訳例文
 
-### カルタ用訳のクリーンアップルール
+### かるた用訳のクリーンアップルール
 1. `()` `（）` → カッコと中身を除去
 2. `〈...〉` `《...》` `【...】` `[[...]]` → カッコと中身を除去
 3. `『』` → カッコ自体を除去、中身は残す
@@ -196,3 +198,4 @@ Sources/KarutaApp/
 アプリ内Settings画面に表示:
 - 『CEFR-J Wordlist Version 1.6』東京外国語大学投野由紀夫研究室.（URL: http://www.cefr-j.org/download.html より2026年4月ダウンロード）
 - 『DiQt English-Japanese Dictionary』BooQs Inc.
+- 効果音：ポケットサウンド – https://pocket-se.info/

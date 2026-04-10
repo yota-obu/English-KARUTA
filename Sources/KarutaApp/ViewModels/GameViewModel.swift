@@ -160,12 +160,14 @@ final class GameViewModel {
         gameCancelled = true
         timerTask?.cancel()
         timerTask = nil
+        soundManager.stopAllSE()
     }
 
     /// Internal stop (used when game finishes naturally).
     func stopGame() {
         timerTask?.cancel()
         timerTask = nil
+        soundManager.stopCountdown()
     }
 
     // MARK: - Match Logic
@@ -196,6 +198,8 @@ final class GameViewModel {
         )
         score += points
 
+        // Reset to nil first so SwiftUI recreates the popup view (re-triggers onAppear animation)
+        scorePopup = nil
         scorePopup = ScorePopupInfo(points: points, streak: streak)
 
         setCardState(eng, state: .matched, in: &englishCards)
@@ -219,7 +223,8 @@ final class GameViewModel {
             try? await Task.sleep(for: .milliseconds(300))
             if gameCancelled { return }
 
-            if pairsCompleted >= stage.totalPairs {
+            // Time-attack mode: stage clear when target pairs reached
+            if stage.mode == .timeAttack && pairsCompleted >= stage.totalPairs {
                 phase = .completed
                 stopGame()
                 soundManager.playGameOver()
@@ -228,15 +233,34 @@ final class GameViewModel {
                 return
             }
 
-            // Wait before replacing with new card in same slot
-            try? await Task.sleep(for: .milliseconds(600))
+            // Wait longer before refilling (lets the player see the match settle,
+            // and lets concurrent matches accumulate before refill).
+            try? await Task.sleep(for: .milliseconds(1100))
             if gameCancelled { return }
-            // Pull ONE entry and use it for both columns to keep them paired
-            if queueIndex < wordQueue.count {
-                let entry = wordQueue[queueIndex]
-                queueIndex += 1
-                replaceMatchedSlot(in: &englishCards, with: entry, column: .english)
-                replaceMatchedSlot(in: &japaneseCards, with: entry, column: .japanese)
+
+            refillNextCard()
+        }
+    }
+
+    /// Refill one matched slot with a new entry.
+    /// If 2+ matched slots exist simultaneously, pick a RANDOM matched slot
+    /// in the Japanese column to refill (instead of the first one), so the new
+    /// english/japanese pair is less likely to land in the same row.
+    private func refillNextCard() {
+        guard queueIndex < wordQueue.count else { return }
+
+        let entry = wordQueue[queueIndex]
+        queueIndex += 1
+
+        // English: replace the first matched slot
+        replaceMatchedSlot(in: &englishCards, with: entry, column: .english)
+
+        // Japanese: if multiple matched slots exist, pick a random one
+        let jpnMatchedIndices = japaneseCards.indices.filter { japaneseCards[$0].state == .matched }
+        if let targetIdx = jpnMatchedIndices.randomElement() {
+            let newCard = GameCard(entryId: entry.id, displayText: entry.firstMeaning, column: .japanese)
+            withAnimation(.spring(response: GameConstants.springResponse, dampingFraction: GameConstants.springDamping)) {
+                japaneseCards[targetIdx] = newCard
             }
         }
     }
@@ -271,19 +295,23 @@ final class GameViewModel {
     // MARK: - Card Management
 
     private func fillInitialCards() {
-        englishCards = []
-        japaneseCards = []
-
         let count = min(stage.visiblePairs, wordQueue.count)
-        var engCards: [GameCard] = []
-        var jpnCards: [GameCard] = []
-
-        for i in 0..<count {
-            let entry = wordQueue[i]
-            engCards.append(GameCard(entryId: entry.id, displayText: entry.headword, column: .english))
-            jpnCards.append(GameCard(entryId: entry.id, displayText: entry.firstMeaning, column: .japanese))
+        guard count > 0 else {
+            englishCards = []
+            japaneseCards = []
+            return
         }
+
+        // Initial set: all 5 pairs present, each column independently shuffled.
+        let entries = Array(wordQueue.prefix(count))
         queueIndex = count
+
+        let engCards: [GameCard] = entries.map {
+            GameCard(entryId: $0.id, displayText: $0.headword, column: .english)
+        }
+        let jpnCards: [GameCard] = entries.map {
+            GameCard(entryId: $0.id, displayText: $0.firstMeaning, column: .japanese)
+        }
 
         englishCards = engCards.shuffled()
         japaneseCards = jpnCards.shuffled()
@@ -321,25 +349,36 @@ final class GameViewModel {
     // MARK: - Timer
 
     private func startTimer() {
+        var countdownStarted = false
         timerTask = Task { @MainActor in
             while !Task.isCancelled && !gameCancelled && timeRemaining > 0 {
                 try? await Task.sleep(for: .milliseconds(50))
                 if Task.isCancelled || gameCancelled { return }
                 timeRemaining -= 0.05
 
+                // Play countdown sound ONCE when entering the warning threshold
+                if !countdownStarted && timeRemaining <= GameConstants.timerWarningThreshold {
+                    countdownStarted = true
+                    soundManager.playCountdown()
+                }
+
+                // Light haptic tick each second during warning period
                 if timeRemaining <= GameConstants.timerWarningThreshold &&
                     timeRemaining.truncatingRemainder(dividingBy: 1.0) < 0.06 {
-                    soundManager.playCountdown()
                     hapticManager.countdownTick()
                 }
 
                 if timeRemaining <= 0 {
                     timeRemaining = 0
                     if gameCancelled { return }
-                    phase = .timeUp
+                    // Stop countdown sound immediately at zero
+                    soundManager.stopCountdown()
+                    // For max-correct mode, time up = natural completion
+                    let isCompleted = (stage.mode == .maxCorrect)
+                    phase = isCompleted ? .completed : .timeUp
                     soundManager.playGameOver()
                     hapticManager.gameComplete()
-                    saveResult(completed: false)
+                    saveResult(completed: isCompleted)
                     return
                 }
             }
@@ -352,7 +391,7 @@ final class GameViewModel {
         let elapsed = startTime.map { Date().timeIntervalSince($0) } ?? timeLimit
         let session = GameSession(
             cefrLevel: stage.level,
-            stageNumber: stage.subLevel,
+            stageNumber: 0,
             score: score,
             totalPairs: stage.totalPairs,
             correctPairs: correctCount,
@@ -362,7 +401,8 @@ final class GameViewModel {
             timeLimitSeconds: timeLimit,
             isCompleted: completed,
             topic: topic,
-            categoryRank: categoryRank?.rawValue
+            categoryRank: categoryRank?.rawValue,
+            gameMode: stage.mode.rawValue
         )
         historyStore.saveSession(session)
     }

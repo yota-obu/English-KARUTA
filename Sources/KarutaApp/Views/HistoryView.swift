@@ -3,7 +3,7 @@ import SwiftData
 
 struct HistoryView: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var sessions: [GameSession] = []
+    @Query(sort: \GameSession.playedAt, order: .reverse) private var sessions: [GameSession]
 
     var body: some View {
         ZStack {
@@ -37,10 +37,6 @@ struct HistoryView: View {
         }
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
-                .onAppear {
-            let store = GameHistoryStore(modelContext: modelContext)
-            sessions = store.fetchSessions()
-        }
     }
 
     private func historyRow(_ session: GameSession) -> some View {
@@ -55,7 +51,7 @@ struct HistoryView: View {
                         .background(
                             Capsule().fill(session.level?.color ?? ColorPalette.accentPrimary)
                         )
-                    Text("Stage \(session.stageNumber)")
+                    Text(session.modeDisplay)
                         .font(FontStyles.bodyMedium)
                         .foregroundStyle(ColorPalette.textPrimary)
                 }

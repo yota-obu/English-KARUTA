@@ -3,60 +3,62 @@ import SwiftData
 
 struct StageSelectView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query private var allSessions: [GameSession]
     @State private var selectedLevel: CEFRLevel = .a1
     @State private var selectedStage: Stage?
-    @State private var mode: PlayMode = .level
-
-    // Category mode state
-    @State private var selectedRank: CategoryRank = .a
-    @State private var pendingTopic: String?
-    @State private var pendingRank: CategoryRank?
 
     private let dictionaryService = DictionaryService.shared
 
-    enum PlayMode: String, CaseIterable {
-        case level = "Level"
-        case topic = "Category"
+    // MARK: - Best Records
+
+    /// Best for Basic mode (level + game mode combo).
+    /// - max_correct: highest score / pairs count
+    /// - time_attack: lowest elapsed time among completed sessions
+    private func basicBest(level: CEFRLevel, mode: GameMode) -> GameSession? {
+        let levelStr = level.rawValue
+        let modeStr = mode.rawValue
+        let candidates = allSessions.filter {
+            $0.cefrLevel == levelStr && $0.gameMode == modeStr && $0.topic == nil
+        }
+        switch mode {
+        case .maxCorrect:
+            return candidates.max(by: { $0.correctPairs < $1.correctPairs })
+        case .timeAttack:
+            return candidates.filter { $0.isCompleted }.min(by: { $0.elapsedSeconds < $1.elapsedSeconds })
+        }
+    }
+
+    private func categoryBest(topic: String, rank: String) -> GameSession? {
+        allSessions
+            .filter { $0.topic == topic && $0.categoryRank == rank && $0.isCompleted }
+            .min(by: { $0.elapsedSeconds < $1.elapsedSeconds })
     }
 
     var body: some View {
         ZStack {
             ColorPalette.backgroundGradient.ignoresSafeArea()
 
-            VStack(spacing: 16) {
-                Picker("Mode", selection: $mode) {
-                    ForEach(PlayMode.allCases, id: \.self) { m in
-                        Text(m.rawValue).tag(m)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 20)
-
-                if mode == .level {
-                    levelModeContent
-                } else {
-                    topicModeContent
-                }
-            }
-            .padding(.top, 8)
+            basicModeContent
+                .padding(.top, 32)
         }
-        .navigationTitle("Select Level")
+        .navigationTitle("Play")
         .navigationBarTitleDisplayMode(.inline)
         .fullScreenCover(item: $selectedStage) { stage in
             GameView(viewModel: GameViewModel(
                 stage: stage,
                 dictionaryService: dictionaryService,
-                historyStore: GameHistoryStore(modelContext: modelContext),
-                topic: pendingTopic,
-                categoryRank: pendingRank
+                historyStore: GameHistoryStore(modelContext: modelContext)
             ))
         }
     }
 
-    // MARK: - Level Mode
+    // MARK: - Basic Mode
 
-    private var levelModeContent: some View {
-        VStack(spacing: 16) {
+    private var basicModeContent: some View {
+        VStack(spacing: 20) {
+            // Section: Level Select
+            sectionLabel("Level Select")
+
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(CEFRLevel.allCases) { level in
@@ -66,135 +68,131 @@ struct StageSelectView: View {
                 .padding(.horizontal, 20)
             }
 
-            ScrollView {
-                VStack(spacing: 10) {
-                    ForEach(Stage.stages(for: selectedLevel)) { stage in
-                        subLevelRow(stage)
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
-        }
-    }
+            // Section: Mode Select (between level and mode rows)
+            sectionLabel("Select Mode")
+                .padding(.top, 4)
 
-    // MARK: - Topic/Category Mode
-
-    private var topicModeContent: some View {
-        VStack(spacing: 16) {
-            // Rank picker
-            HStack(spacing: 10) {
-                ForEach(CategoryRank.allCases) { rank in
-                    rankChip(rank)
+            // Available game modes
+            VStack(spacing: 14) {
+                ForEach(GameMode.allCases, id: \.self) { gameMode in
+                    basicModeRow(level: selectedLevel, gameMode: gameMode)
                 }
+
+                // Coming soon placeholders
+                comingSoonRow(title: "Listening Mode", description: "Match by listening to pronunciation", icon: "ear.fill")
+                comingSoonRow(title: "Spelling Mode", description: "Type the correct spelling", icon: "keyboard.fill")
             }
             .padding(.horizontal, 20)
 
-            // Topic list filtered by rank
-            ScrollView {
-                LazyVStack(spacing: 10) {
-                    let topics = dictionaryService.allTopics()
-                    let mainTopics = uniqueMainTopics(from: topics)
-                    ForEach(mainTopics, id: \.self) { topic in
-                        let count = dictionaryService.topicWordCount(topic: topic, levels: selectedRank.cefrLevels)
-                        if count >= 15 {
-                            topicRow(topic: topic, wordCount: count)
-                        }
-                    }
-                }
-                .padding(.horizontal, 20)
-            }
+            Spacer()
         }
     }
 
-    private func uniqueMainTopics(from raw: [String]) -> [String] {
-        var seen = Set<String>()
-        var result: [String] = []
-        for r in raw {
-            for part in r.components(separatedBy: ";") {
-                let t = part.trimmingCharacters(in: .whitespaces)
-                if !t.isEmpty && !seen.contains(t) {
-                    seen.insert(t)
-                    result.append(t)
-                }
-            }
+    private func sectionLabel(_ text: String) -> some View {
+        HStack {
+            Text(text)
+                .font(FontStyles.bodyMedium)
+                .fontWeight(.semibold)
+                .foregroundStyle(ColorPalette.textSecondary)
+            Spacer()
         }
-        return result.sorted()
+        .padding(.horizontal, 24)
     }
 
-    private func rankChip(_ rank: CategoryRank) -> some View {
-        Button {
-            HapticManager.shared.cardTap()
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
-                selectedRank = rank
+    private func comingSoonRow(title: String, description: String, icon: String) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundStyle(ColorPalette.textTertiary)
+                .frame(width: 40)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(FontStyles.bodyLarge)
+                    .foregroundStyle(ColorPalette.textTertiary)
+                Text(description)
+                    .font(FontStyles.caption)
+                    .foregroundStyle(ColorPalette.textTertiary)
             }
-        } label: {
-            VStack(spacing: 3) {
-                Text(rank.displayName)
-                    .font(FontStyles.titleSmall)
-                Text(rank.description)
-                    .font(.system(size: 9, weight: .medium, design: .rounded))
-            }
-            .foregroundStyle(selectedRank == rank ? .white : ColorPalette.textSecondary)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(selectedRank == rank ? ColorPalette.accentPrimary : ColorPalette.backgroundCard)
-                    .shadow(color: selectedRank == rank ? ColorPalette.accentPrimary.opacity(0.3) : .clear, radius: 8, y: 4)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(selectedRank == rank ? .clear : ColorPalette.liquidBorderColor, lineWidth: 1)
-            )
-            .frame(maxWidth: .infinity)
+
+            Spacer()
+
+            Text("Coming Soon")
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(Capsule().fill(ColorPalette.slate))
         }
-        .buttonStyle(LiquidPressStyle())
+        .padding(.vertical, 22)
+        .padding(.horizontal, 18)
+        .softCard()
+        .opacity(0.6)
     }
 
-    private func topicRow(topic: String, wordCount: Int) -> some View {
-        let store = GameHistoryStore(modelContext: modelContext)
-        let best = store.categoryBest(topic: topic, rank: selectedRank.rawValue)
+    private func basicModeRow(level: CEFRLevel, gameMode: GameMode) -> some View {
+        let best = basicBest(level: level, mode: gameMode)
+        let stage = Stage.stage(level: level, mode: gameMode)
 
         return Button {
             HapticManager.shared.cardTap()
-            pendingTopic = topic
-            pendingRank = selectedRank
-            selectedStage = Stage.categoryStage(rank: selectedRank)
+            SoundManager.shared.playSelect()
+            selectedStage = stage
         } label: {
-            HStack {
+            HStack(spacing: 14) {
+                Image(systemName: gameMode.icon)
+                    .font(.title2)
+                    .foregroundStyle(level.color)
+                    .frame(width: 40)
+
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(topic)
+                    Text(gameMode.displayName)
                         .font(FontStyles.bodyLarge)
                         .foregroundStyle(ColorPalette.textPrimary)
-                    Text("\(wordCount) words • 15 pairs")
+                    Text(gameMode.description)
                         .font(FontStyles.caption)
                         .foregroundStyle(ColorPalette.textTertiary)
                 }
+
                 Spacer()
+
                 VStack(alignment: .trailing, spacing: 2) {
-                    if let best = best {
-                        Text(String(format: "%.1fs", best.elapsedSeconds))
-                            .font(FontStyles.titleSmall)
-                            .foregroundStyle(ColorPalette.streakGold)
-                    } else {
-                        Text("0.0s")
-                            .font(FontStyles.titleSmall)
-                            .foregroundStyle(ColorPalette.textTertiary)
-                    }
+                    bestText(for: gameMode, session: best)
                     Text("Best")
                         .font(.system(size: 9, weight: .medium, design: .rounded))
                         .foregroundStyle(ColorPalette.textTertiary)
                 }
                 .padding(.trailing, 6)
+
                 Image(systemName: "chevron.right")
                     .font(.caption2)
                     .foregroundStyle(ColorPalette.textTertiary)
             }
-            .padding(.vertical, 14)
+            .padding(.vertical, 22)
             .padding(.horizontal, 18)
             .softCard()
         }
         .buttonStyle(LiquidPressStyle())
+    }
+
+    @ViewBuilder
+    private func bestText(for mode: GameMode, session: GameSession?) -> some View {
+        switch mode {
+        case .maxCorrect:
+            Text("\(session?.correctPairs ?? 0)")
+                .font(FontStyles.titleSmall)
+                .foregroundStyle((session?.correctPairs ?? 0) > 0 ? ColorPalette.streakGold : ColorPalette.textTertiary)
+        case .timeAttack:
+            if let s = session {
+                Text(String(format: "%.1fs", s.elapsedSeconds))
+                    .font(FontStyles.titleSmall)
+                    .foregroundStyle(ColorPalette.streakGold)
+            } else {
+                Text("0.0s")
+                    .font(FontStyles.titleSmall)
+                    .foregroundStyle(ColorPalette.textTertiary)
+            }
+        }
     }
 
     // MARK: - Level Components
@@ -202,6 +200,7 @@ struct StageSelectView: View {
     private func levelChip(_ level: CEFRLevel) -> some View {
         Button {
             HapticManager.shared.cardTap()
+            SoundManager.shared.playSelect()
             withAnimation(.spring(response: 0.4, dampingFraction: 0.65)) {
                 selectedLevel = level
             }
@@ -220,57 +219,6 @@ struct StageSelectView: View {
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .strokeBorder(selectedLevel == level ? .clear : ColorPalette.liquidBorderColor, lineWidth: 1)
                 )
-        }
-        .buttonStyle(LiquidPressStyle())
-    }
-
-    private func subLevelRow(_ stage: Stage) -> some View {
-        let store = GameHistoryStore(modelContext: modelContext)
-        let highScore = store.highScore(level: stage.level, stageNumber: stage.subLevel)
-
-        return Button {
-            HapticManager.shared.cardTap()
-            pendingTopic = nil
-            pendingRank = nil
-            selectedStage = stage
-        } label: {
-            HStack(spacing: 0) {
-                Text("\(stage.subLevel)")
-                    .font(FontStyles.titleMedium)
-                    .foregroundStyle(stage.level.color)
-                    .frame(width: 36)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("\(stage.level.rawValue) - Level \(stage.subLevel)")
-                        .font(FontStyles.bodyMedium)
-                        .foregroundStyle(ColorPalette.textPrimary)
-                    HStack(spacing: 12) {
-                        Label("\(stage.totalPairs) pairs", systemImage: "square.grid.2x2")
-                        Label("\(Int(stage.timeLimitSeconds))s", systemImage: "timer")
-                    }
-                    .font(FontStyles.caption)
-                    .foregroundStyle(ColorPalette.textTertiary)
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(highScore)")
-                        .font(FontStyles.titleSmall)
-                        .foregroundStyle(highScore > 0 ? ColorPalette.streakGold : ColorPalette.textTertiary)
-                    Text("Best")
-                        .font(.system(size: 9, weight: .medium, design: .rounded))
-                        .foregroundStyle(ColorPalette.textTertiary)
-                }
-                .padding(.trailing, 8)
-
-                Image(systemName: "chevron.right")
-                    .font(.caption2)
-                    .foregroundStyle(ColorPalette.textTertiary)
-            }
-            .padding(.vertical, 16)
-            .padding(.horizontal, 18)
-            .softCard()
         }
         .buttonStyle(LiquidPressStyle())
     }

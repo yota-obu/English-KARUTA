@@ -1,54 +1,74 @@
 import Foundation
 
+/// Game mode types
+enum GameMode: String, CaseIterable, Sendable {
+    case maxCorrect = "max_correct"   // 1 minute, count how many pairs you can match
+    case timeAttack = "time_attack"   // Match 15 pairs as fast as possible
+
+    var displayName: String {
+        switch self {
+        case .maxCorrect: return "1 Minute Challenge"
+        case .timeAttack: return "Time Attack"
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .maxCorrect: return "1 min"
+        case .timeAttack: return "15 pairs"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .maxCorrect: return "Match as many pairs as you can in 60 seconds"
+        case .timeAttack: return "Match 15 pairs as fast as possible"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .maxCorrect: return "timer"
+        case .timeAttack: return "bolt.fill"
+        }
+    }
+}
+
 struct Stage: Identifiable, Sendable {
     let id: String
     let level: CEFRLevel
-    let subLevel: Int             // 1-7 within each CEFR level
-    let visiblePairs: Int         // always 5
-    let totalPairs: Int
-    let timeLimitSeconds: Double
+    let mode: GameMode
+    let visiblePairs: Int            // always 5 cards per column
+    let totalPairs: Int              // for time attack: 15. for max correct: large pool (60)
+    let timeLimitSeconds: Double     // for max correct: 60. for time attack: hard cap
 
-    var displayName: String { "\(level.rawValue)-\(subLevel)" }
+    var displayName: String { "\(level.rawValue) \(mode.shortName)" }
 
-    /// Stages for a specific CEFR level (7 stages each)
+    /// Two stages per CEFR level: one max-correct, one time-attack
     static func stages(for level: CEFRLevel) -> [Stage] {
-        (1...7).map { sub in
-            Stage(
-                id: "\(level.rawValue)_\(sub)",
+        GameMode.allCases.map { stage(level: level, mode: $0) }
+    }
+
+    static func stage(level: CEFRLevel, mode: GameMode) -> Stage {
+        switch mode {
+        case .maxCorrect:
+            return Stage(
+                id: "\(level.rawValue)_max",
                 level: level,
-                subLevel: sub,
+                mode: .maxCorrect,
                 visiblePairs: 5,
-                totalPairs: totalPairs(for: sub),
-                timeLimitSeconds: timeLimit(for: sub)
+                totalPairs: 60,                  // big pool, won't usually be exhausted
+                timeLimitSeconds: 60
             )
-        }
-    }
-
-    // Sub-level 1: 10 pairs → Sub-level 7: 22 pairs
-    private static func totalPairs(for sub: Int) -> Int {
-        switch sub {
-        case 1: return 10
-        case 2: return 12
-        case 3: return 14
-        case 4: return 16
-        case 5: return 18
-        case 6: return 20
-        case 7: return 22
-        default: return 10
-        }
-    }
-
-    // Sub-level 1: 95s → Sub-level 7: 65s
-    private static func timeLimit(for sub: Int) -> Double {
-        switch sub {
-        case 1: return 95
-        case 2: return 90
-        case 3: return 85
-        case 4: return 80
-        case 5: return 75
-        case 6: return 70
-        case 7: return 65
-        default: return 90
+        case .timeAttack:
+            return Stage(
+                id: "\(level.rawValue)_attack",
+                level: level,
+                mode: .timeAttack,
+                visiblePairs: 5,
+                totalPairs: 15,
+                timeLimitSeconds: 180            // hard cap (3 min)
+            )
         }
     }
 
@@ -57,10 +77,10 @@ struct Stage: Identifiable, Sendable {
         Stage(
             id: "category_\(rank.rawValue)",
             level: rank.cefrLevels.first ?? .a1,
-            subLevel: 0,
+            mode: .timeAttack,
             visiblePairs: 5,
             totalPairs: 15,
-            timeLimitSeconds: 120  // generous for time-attack
+            timeLimitSeconds: 180
         )
     }
 }

@@ -100,17 +100,20 @@ final class GameHistoryStore {
     // MARK: - Word Records
 
     /// Record a correct answer.
-    /// - If the user has never had a wrong answer for this word, mark it as mastered.
-    /// - If they had wrong answers before but got it right this time, keep it in Wrong list (lastAttemptWrong=false but wrongCount > 0).
+    /// - First-time correct (no past wrong): increment correctCount and mark mastered.
+    /// - If the word was wrong in the past: keep it in Wrong list, do NOT increment correctCount.
     func recordCorrect(entry: DictionaryEntry) {
         let record = findOrCreateRecord(entry: entry)
-        record.correctCount += 1
         record.lastSeenAt = Date()
         record.lastAttemptWrong = false
-        // Auto-master if no past wrong answers
-        if record.wrongCount == 0 && record.masteredAt == nil {
-            record.masteredAt = Date()
+        if record.wrongCount == 0 {
+            // Pristine word — count it and master it
+            record.correctCount += 1
+            if record.masteredAt == nil {
+                record.masteredAt = Date()
+            }
         }
+        // If wrongCount > 0: leave in Wrong list, no count increment
         try? modelContext.save()
     }
 

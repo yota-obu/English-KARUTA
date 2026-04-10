@@ -3,11 +3,13 @@ import SwiftData
 
 struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
+    @Query(filter: #Predicate<WordRecord> { $0.masteredAt == nil }) private var unmasteredRecords: [WordRecord]
     @State private var showStageSelect = false
     @State private var showHistory = false
     @State private var showReview = false
     @State private var showSettings = false
-    @State private var unreviewedCount = 0
+
+    private var unreviewedCount: Int { unmasteredRecords.count }
 
     var body: some View {
         NavigationStack {
@@ -19,8 +21,9 @@ struct HomeView: View {
 
                     // Logo
                     VStack(spacing: 8) {
-                        Text("Karuta")
-                            .font(.system(size: 48, weight: .heavy, design: .rounded))
+                        Text("英単語かるた")
+                            .font(.custom("HiraMaruProN-W4", size: 44))
+                            .fontWeight(.heavy)
                             .foregroundStyle(
                                 LinearGradient(
                                     colors: [ColorPalette.accentPrimary, ColorPalette.accentSecondary],
@@ -28,8 +31,8 @@ struct HomeView: View {
                                 )
                             )
 
-                        Text("English Flashcard Game")
-                            .font(FontStyles.bodyMedium)
+                        Text("English Vocabulary Karuta")
+                            .font(.custom("HiraMaruProN-W4", size: 18))
                             .foregroundStyle(ColorPalette.textSecondary)
                     }
 
@@ -38,18 +41,22 @@ struct HomeView: View {
                     // Menu Buttons
                     VStack(spacing: 14) {
                         menuButton(title: "Play", icon: "play.fill", accent: ColorPalette.periwinkle) {
+                            SoundManager.shared.playSelect()
                             showStageSelect = true
                         }
 
                         menuButton(title: "Review", icon: "book.fill", accent: ColorPalette.indigo, badge: unreviewedCount) {
+                            SoundManager.shared.playSelect()
                             showReview = true
                         }
 
                         menuButton(title: "History", icon: "clock.fill", accent: ColorPalette.lavender) {
+                            SoundManager.shared.playSelect()
                             showHistory = true
                         }
 
                         menuButton(title: "Settings", icon: "gearshape.fill", accent: ColorPalette.slate) {
+                            SoundManager.shared.playSelect()
                             showSettings = true
                         }
                     }
@@ -69,10 +76,6 @@ struct HomeView: View {
             }
             .navigationDestination(isPresented: $showSettings) {
                 SettingsView()
-            }
-            .onAppear {
-                let store = GameHistoryStore(modelContext: modelContext)
-                unreviewedCount = store.unmasteredWrongCount()
             }
         }
     }

@@ -19,7 +19,7 @@ struct HistoryDetailView: View {
                             .font(FontStyles.titleLarge)
                             .foregroundStyle(ColorPalette.textPrimary)
 
-                        Text("\(session.cefrLevel) Stage \(session.stageNumber)")
+                        Text("\(session.cefrLevel) • \(session.modeDisplay)")
                             .font(FontStyles.bodyMedium)
                             .foregroundStyle(ColorPalette.textSecondary)
 

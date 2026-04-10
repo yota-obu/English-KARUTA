@@ -15,10 +15,12 @@ final class GameSession {
     var timeLimitSeconds: Double
     var playedAt: Date
     var isCompleted: Bool
-    /// Category mode: topic name (nil for level mode)
+    /// Category mode: topic name (nil for basic mode)
     var topic: String? = nil
-    /// Category mode: rank "A"/"B"/"C" (nil for level mode)
+    /// Category mode: rank "A"/"B" (nil for basic mode)
     var categoryRank: String? = nil
+    /// Game mode: "max_correct" or "time_attack"
+    var gameMode: String = "time_attack"
 
     var accuracy: Double {
         let total = correctPairs + wrongAttempts
@@ -30,10 +32,21 @@ final class GameSession {
         CEFRLevel(rawValue: cefrLevel)
     }
 
+    var modeDisplay: String {
+        if let topic = topic {
+            return "\(topic)"
+        }
+        switch gameMode {
+        case "max_correct": return "1 min"
+        case "time_attack": return "15 pairs"
+        default: return ""
+        }
+    }
+
     init(cefrLevel: CEFRLevel, stageNumber: Int, score: Int, totalPairs: Int,
          correctPairs: Int, wrongAttempts: Int, maxStreak: Int,
          elapsedSeconds: Double, timeLimitSeconds: Double, isCompleted: Bool,
-         topic: String? = nil, categoryRank: String? = nil) {
+         topic: String? = nil, categoryRank: String? = nil, gameMode: String = "time_attack") {
         self.id = UUID()
         self.cefrLevel = cefrLevel.rawValue
         self.stageNumber = stageNumber
@@ -48,5 +61,6 @@ final class GameSession {
         self.isCompleted = isCompleted
         self.topic = topic
         self.categoryRank = categoryRank
+        self.gameMode = gameMode
     }
 }
