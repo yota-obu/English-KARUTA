@@ -34,7 +34,7 @@ final class SoundManager: NSObject, @unchecked Sendable {
     private var bgmPlayer: AVAudioPlayer?
     private let seVolume: Float = 0.25     // default 25%
     private let bgmVolume: Float = 0.15    // 15% subtle background
-    private let quietVolume: Float = 0.10  // for long/loud sounds (timeup, countdown)
+    private let quietVolume: Float = 0.05  // for long/loud sounds (timeup, countdown) — 5%
 
     // MARK: - Setup
     override init() {
@@ -67,6 +67,16 @@ final class SoundManager: NSObject, @unchecked Sendable {
                     sePlayers[name] = player
                 }
             }
+        }
+        // Warm up: play select sound silently at volume 0 so the audio pipeline
+        // is fully primed before the first user tap.
+        if let warmup = sePlayers["select"] {
+            let originalVolume = warmup.volume
+            warmup.volume = 0
+            warmup.play()
+            warmup.stop()
+            warmup.currentTime = 0
+            warmup.volume = originalVolume
         }
     }
 

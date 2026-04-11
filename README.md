@@ -5,15 +5,13 @@ CEFR（ヨーロッパ言語共通参照枠）に基づいた4段階の難易度
 
 ## 特徴
 
-- **マッチング形式のカードゲーム** — 英語カードと日本語カードをペアで選んで正解を目指す
-- **2つのゲームモード** — 「1 Minute Challenge」と「Time Attack」
-- **CEFRレベル対応（A1〜B2）** — 4段階の難易度
-- **2つのプレイモード** — レベル別の Basic モードと、カテゴリ別の Category モード（Rank A/B）
-- **スコアリングシステム** — スピードボーナス・連続正解ストリークによる倍率アップ
-- **間違えた問題の復習機能** — 不正解の単語を保存し、例文付きで復習できる
-- **プレイ履歴・ベストスコア** — 過去のゲーム結果を記録、レベル/モードごとのベスト記録を表示
-- **サウンド＆触覚フィードバック** — 正解・不正解・コンボ・カウントダウン等に対応
-- **ライトテーマ UI** — Periwinkle / Lavender / Indigo を基調としたカラーパレット
+- **マッチング形式のカードゲーム** — 英語カードと日本語かるたをペアで選んで正解を目指す
+- **2つのゲームモード** — 「1 Minute Challenge」(60秒で何ペア取れるか) と「Time Attack」(20ペアを最速で)
+- **CEFRレベル対応（A1〜B2）** — 4段階の難易度。CEFR-J Wordlist v1.6 に基づく約 7,600 語
+- **間違えた問題の復習機能** — 不正解の単語を WordRecord として保存し、例文付きで復習できる。正解で自動マスター
+- **プレイ履歴・ベストスコア** — 過去のゲーム結果を記録、レベル × モードごとのベスト記録を表示。ハイスコア時は NEW RECORD バッジ
+- **サウンド＆触覚フィードバック** — 正解 / 不正解 / カウントダウン / タイムアップ等に対応
+- **ライトテーマ UI** — Periwinkle / Lavender / Indigo を基調とした 6色限定パレット (液体ソフトモーフィズム)
 - **設定機能** — プライバシーポリシー、フィードバック送信、シェア、レビュー依頼
 
 ## スクリーンショット
@@ -73,7 +71,8 @@ cd Tools
 python3 build_dictionary.py
 ```
 
-CEFR-J Vocabulary Profile と JMdict のデータをもとに `dictionary.sqlite` を再構築します。
+CEFR-J Wordlist v1.6 のデータをもとに `dictionary.sqlite` を再構築します。
+DiQt 由来の日本語訳をクリーンアップし、約 7,600 エントリの SQLite を生成します。
 
 ## プロジェクト構成
 
@@ -84,22 +83,22 @@ Sources/KarutaApp/
 ├── Models/
 │   ├── GameCard.swift           # カードの状態管理
 │   ├── GameSession.swift        # ゲームセッション（永続化）
-│   ├── WrongAnswer.swift        # 不正解データ（永続化／レガシー）
-│   ├── WordRecord.swift         # 単語ごとの学習記録（復習用）
+│   ├── WrongAnswer.swift        # 不正解データ（レガシー／未使用）
+│   ├── WordRecord.swift         # 単語ごとの学習記録（正解/不正解回数、マスター状態）
 │   ├── DictionaryEntry.swift    # 辞書エントリ
 │   ├── CEFRLevel.swift          # 難易度レベル定義（A1〜B2）
-│   └── Stage.swift              # ステージ・ゲームモード・カテゴリランク定義
+│   └── Stage.swift              # ステージ・ゲームモード定義
 ├── Views/
 │   ├── HomeView.swift           # ホーム画面
 │   ├── GameView.swift           # ゲーム画面
 │   ├── GameResultView.swift     # リザルト画面
-│   ├── StageSelectView.swift    # ステージ選択（Basic / Category 切り替え）
+│   ├── StageSelectView.swift    # ステージ選択（CEFR レベル × ゲームモード）
 │   ├── HistoryView.swift        # プレイ履歴一覧
 │   ├── HistoryDetailView.swift  # 履歴詳細
-│   ├── ReviewView.swift         # 復習画面
+│   ├── ReviewView.swift         # 復習画面 (Wrong/Mastered/All タブ + CEFR フィルタ)
 │   ├── SettingsView.swift       # 設定画面
 │   ├── PrivacyPolicyView.swift  # プライバシーポリシー
-│   ├── OnboardingView.swift     # 初回起動ガイド
+│   ├── OnboardingView.swift     # 初回起動ガイド (現在は使用していない)
 │   └── Components/
 │       ├── GameCardView.swift   # カード表示・タップ処理
 │       ├── ScorePopupView.swift # 加点表示ポップアップ
@@ -149,48 +148,37 @@ View（SwiftUI） → ViewModel（@Observable） → Service / Model
 
 ## ゲームシステム
 
-### プレイモード
-
-| モード | 内容 |
-|--------|------|
-| **Basic** | CEFR レベル（A1〜B2）を選んでプレイ |
-| **Category** | カテゴリ別に Rank A（A1+A2）/ Rank B（B1+B2）を選んでプレイ |
-
-### ゲームモード（各レベル/カテゴリ共通）
+### ゲームモード
 
 | モード | 内容 | 制限時間 | クリア条件 |
 |--------|------|----------|------------|
 | **1 Minute Challenge**（max_correct） | 60秒以内にできるだけ多くのペアを正解する | 60秒 | 時間切れで終了。正解数を競う |
-| **Time Attack**（time_attack） | 15ペアを最速で正解する | 300秒（実質クリア時間が記録対象） | 15ペア完了でクリア。タイムを競う |
+| **Time Attack**（time_attack） | 20ペアを最速で正解する | 300秒（実質クリア時間が記録対象） | 20ペア完了でクリア。タイムを競う。タイマーはカウントアップ表示 |
 
-両モードとも、表示カードは常に **5ペア** で、正解するごとに新しいカードが補充されます。
+両モードとも、表示カードは常に **5ペア (英語5枚 + 日本語5枚)** で、正解するごとに新しいカードが補充されます。
 
 ### 難易度レベル（CEFR）
 
-| レベル | 名称（英） | 名称（日） |
-|--------|-----------|-----------|
-| A1 | Beginner | 初級 |
-| A2 | Elementary | 初級上 |
-| B1 | Intermediate | 中級 |
-| B2 | Upper Intermediate | 中級上 |
+| レベル | 名称 | 単語数 |
+|--------|-----|------|
+| A1 | Beginner | 約 1,100 |
+| A2 | Elementary | 約 1,400 |
+| B1 | Intermediate | 約 2,400 |
+| B2 | Upper Intermediate | 約 2,800 |
 
-### スコアリング
+### カード補充ロジック
 
-スコア計算式（[Constants.swift](Sources/KarutaApp/Utilities/Constants.swift)）:
+- 正解後 1.1秒待機 (連続マッチを溜める) → 最大1.8秒で強制補充
+- 連続マッチ時は空きスロットに **一括補充**
+- 英語/日本語それぞれ **ランダムなスロット**に配置 → 同じ位置パターンが固定化されない
+- 出現は `.opacity` + `.scale` フェードイン (0.6秒)
 
-```
-獲得スコア = 基本点(10) × スピードボーナス × ストリーク倍率
-```
+### 復習システム (WordRecord)
 
-| 要素 | 詳細 |
-|------|------|
-| 基本ポイント | 1ペア正解 = 10点 |
-| スピードボーナス | `1.0 + (残り時間 / 制限時間) × 0.5` （1.0〜1.5倍） |
-| ストリーク倍率 | 0-2連続: 1.0× / 3-5連続: 1.5× / 6-9連続: 2.0× / 10-14連続: 2.5× / 15連続以上: 3.0× |
-| 不正解ペナルティ | 残り時間から 3秒減算 |
-| ストリークマイルストーン | 5連続正解ごとに演出（追加スコアなし） |
-
-不正解するとストリークは 0 にリセットされます。
+- ゲーム中の正解/不正解を WordRecord として永続化
+- 初回正解 → 自動的にマスター扱い
+- 一度でも間違えると Wrong リスト入り、その後正解しても Wrong に留まる
+- Review 画面で **Wrong / Mastered / All** タブ + CEFR レベルフィルタで閲覧
 
 ### ベストスコア記録
 
@@ -198,6 +186,7 @@ View（SwiftUI） → ViewModel（@Observable） → Service / Model
 
 - **1 Minute Challenge**: 最高正解数
 - **Time Attack**: 最短クリア時間（クリア済みセッションのみ）
+- ハイスコア達成時はリザルト画面に **NEW RECORD!** バッジが表示されます
 
 ## 設定画面の機能
 

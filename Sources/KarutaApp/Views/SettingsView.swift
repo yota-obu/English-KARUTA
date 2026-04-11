@@ -10,8 +10,8 @@ struct SettingsView: View {
     @State private var showClearConfirm = false
     @State private var showShareSheet = false
 
-    // TODO: 公開時に正しい値へ差し替える
-    private let feedbackEmail = "support@example.com"
+    // TODO: App Store 公開後に appStoreId を差し替える
+    private let feedbackEmail = "yotalab.tech@gmail.com"
     private let appStoreId = "id0000000000"
     private var appStoreURL: URL {
         URL(string: "https://apps.apple.com/app/\(appStoreId)")!
@@ -52,10 +52,11 @@ struct SettingsView: View {
                 .listRowBackground(ColorPalette.backgroundCard)
 
                 Section {
-                    Button(role: .destructive) {
+                    Button {
                         showClearConfirm = true
                     } label: {
                         Label("Clear All History", systemImage: "trash")
+                            .foregroundStyle(ColorPalette.textPrimary)
                     }
                 } header: {
                     Text("Data")

@@ -31,7 +31,7 @@ struct GameResultView: View {
             return viewModel.correctCount > bestPrior
         case .timeAttack:
             guard viewModel.phase.isCompleted else { return false }
-            let elapsed = viewModel.timeLimit - viewModel.timeRemaining
+            let elapsed = viewModel.finalElapsedSeconds
             let bestPrior = prior.filter(\.isCompleted).map(\.elapsedSeconds).min()
             guard let best = bestPrior else { return true }
             return elapsed < best
@@ -64,8 +64,7 @@ struct GameResultView: View {
         if isMaxCorrect {
             return "\(viewModel.correctCount)"
         } else {
-            let elapsed = viewModel.timeLimit - viewModel.timeRemaining
-            return String(format: "%.1fs", elapsed)
+            return String(format: "%.1fs", viewModel.finalElapsedSeconds)
         }
     }
 
@@ -83,7 +82,7 @@ struct GameResultView: View {
         if isMaxCorrect {
             return "英単語かるた - \(viewModel.stage.level.rawValue) 1 min: \(viewModel.correctCount) pairs!"
         } else {
-            return "英単語かるた - \(viewModel.stage.level.rawValue) 15 pairs: \(primaryValue)!"
+            return "英単語かるた - \(viewModel.stage.level.rawValue) 20 pairs: \(primaryValue)!"
         }
     }
 
@@ -204,7 +203,7 @@ struct GameResultView: View {
                 correctPairs: viewModel.correctCount,
                 wrongAttempts: viewModel.wrongCount,
                 maxStreak: viewModel.maxStreak,
-                elapsedSeconds: viewModel.timeLimit - viewModel.timeRemaining,
+                elapsedSeconds: viewModel.finalElapsedSeconds,
                 timeLimitSeconds: viewModel.timeLimit,
                 isCompleted: viewModel.phase.isCompleted,
                 gameMode: viewModel.stage.mode.rawValue

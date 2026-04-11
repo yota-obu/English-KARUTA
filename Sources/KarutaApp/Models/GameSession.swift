@@ -38,7 +38,7 @@ final class GameSession {
         }
         switch gameMode {
         case "max_correct": return "1 min"
-        case "time_attack": return "15 pairs"
+        case "time_attack": return "20 pairs"
         default: return ""
         }
     }

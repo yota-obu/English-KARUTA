@@ -3,7 +3,7 @@ import Foundation
 /// Game mode types
 enum GameMode: String, CaseIterable, Sendable {
     case maxCorrect = "max_correct"   // 1 minute, count how many pairs you can match
-    case timeAttack = "time_attack"   // Match 15 pairs as fast as possible
+    case timeAttack = "time_attack"   // Match 20 pairs as fast as possible
 
     var displayName: String {
         switch self {
@@ -15,14 +15,14 @@ enum GameMode: String, CaseIterable, Sendable {
     var shortName: String {
         switch self {
         case .maxCorrect: return "1 min"
-        case .timeAttack: return "15 pairs"
+        case .timeAttack: return "20 pairs"
         }
     }
 
     var description: String {
         switch self {
         case .maxCorrect: return "Match as many pairs as you can in 60 seconds"
-        case .timeAttack: return "Match 15 pairs as fast as possible"
+        case .timeAttack: return "Match 20 pairs as fast as possible"
         }
     }
 
@@ -66,13 +66,13 @@ struct Stage: Identifiable, Sendable {
                 level: level,
                 mode: .timeAttack,
                 visiblePairs: 5,
-                totalPairs: 15,
-                timeLimitSeconds: 180            // hard cap (3 min)
+                totalPairs: 20,
+                timeLimitSeconds: 300            // hard cap (5 min)
             )
         }
     }
 
-    /// Stage for category mode: fixed 15 pairs, time-attack
+    /// Stage for category mode: fixed 20 pairs, time-attack
     static func categoryStage(rank: CategoryRank) -> Stage {
         Stage(
             id: "category_\(rank.rawValue)",
@@ -80,7 +80,7 @@ struct Stage: Identifiable, Sendable {
             mode: .timeAttack,
             visiblePairs: 5,
             totalPairs: 15,
-            timeLimitSeconds: 180
+            timeLimitSeconds: 300
         )
     }
 }

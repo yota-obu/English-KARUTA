@@ -4,7 +4,6 @@ enum GameConstants {
     static let defaultTimeLimit: Double = 105.0        // 1:45
     static let countdownSeconds: Int = 3
     static let baseScore: Int = 10
-    static let timePenalty: Double = 3.0
     static let timerWarningThreshold: Double = 10.0
 
     static let cardCornerRadius: CGFloat = 20

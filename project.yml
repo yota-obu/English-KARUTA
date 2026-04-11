@@ -27,6 +27,6 @@ targets:
         CODE_SIGN_STYLE: Automatic
         CODE_SIGNING_REQUIRED: "YES"
         CODE_SIGNING_ALLOWED: "YES"
-        DEVELOPMENT_TEAM: ""
+        DEVELOPMENT_TEAM: GMB638MVMY
         SUPPORTED_PLATFORMS: "iphonesimulator iphoneos"
         SDKROOT: iphoneos

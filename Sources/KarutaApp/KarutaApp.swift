@@ -6,6 +6,9 @@ import UIKit
 struct KarutaApp: App {
     init() {
         configureNavigationBar()
+        // Eagerly initialize SoundManager so AVAudioSession is active and
+        // all SE players are preloaded/warmed up BEFORE the first user tap.
+        _ = SoundManager.shared
         // Start BGM if enabled
         Task { @MainActor in
             SoundManager.shared.playBGM()

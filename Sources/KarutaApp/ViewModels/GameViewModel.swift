@@ -59,6 +59,8 @@ final class GameViewModel {
     private var startTime: Date?
     /// ID of the saved session for this play (used for "is new record" lookup)
     var lastSessionId: UUID?
+    /// Final elapsed seconds at game end (matches the value saved to DB)
+    var finalElapsedSeconds: Double = 0
 
     /// Track entries already counted as wrong in this session (avoid double-counting on repeat misses)
     private var wronglyAttemptedInSession: Set<Int64> = []
@@ -87,6 +89,7 @@ final class GameViewModel {
         gameCancelled = false
         wronglyAttemptedInSession = []
         refillDeadline = nil
+        finalElapsedSeconds = 0
         phase = .loading
         hapticManager.prepare()
 
@@ -233,6 +236,10 @@ final class GameViewModel {
 
         // Time-attack mode: stage clear when target pairs reached
         if stage.mode == .timeAttack && pairsCompleted >= stage.totalPairs {
+            // Capture elapsed time AT THE MOMENT OF COMPLETION (not after delay)
+            let elapsedAtCompletion = startTime.map { Date().timeIntervalSince($0) } ?? 0
+            finalElapsedSeconds = elapsedAtCompletion
+
             // Slight delay so the matched fade is visible before result
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(300))
@@ -241,7 +248,7 @@ final class GameViewModel {
                 stopGame()
                 soundManager.playGameOver()
                 hapticManager.gameComplete()
-                saveResult(completed: true)
+                saveResultWithFixedElapsed(elapsedAtCompletion, completed: true)
             }
             return
         }
@@ -309,7 +316,6 @@ final class GameViewModel {
     private func handleWrongMatch(eng: GameCard, jpn: GameCard) {
         streak = 0
         wrongCount += 1
-        timeRemaining = max(0, timeRemaining - GameConstants.timePenalty)
 
         setCardState(eng, state: .wrong, in: &englishCards)
         setCardState(jpn, state: .wrong, in: &japaneseCards)
@@ -419,6 +425,18 @@ final class GameViewModel {
 
     private func saveResult(completed: Bool) {
         let elapsed = startTime.map { Date().timeIntervalSince($0) } ?? timeLimit
+        finalElapsedSeconds = elapsed
+        saveSessionInternal(elapsed: elapsed, completed: completed)
+    }
+
+    /// Save with an externally-fixed elapsed time (used by time-attack completion to
+    /// avoid the 300ms post-match delay being counted in the score).
+    private func saveResultWithFixedElapsed(_ elapsed: Double, completed: Bool) {
+        finalElapsedSeconds = elapsed
+        saveSessionInternal(elapsed: elapsed, completed: completed)
+    }
+
+    private func saveSessionInternal(elapsed: Double, completed: Bool) {
         let session = GameSession(
             cefrLevel: stage.level,
             stageNumber: 0,

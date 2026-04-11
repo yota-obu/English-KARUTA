@@ -75,14 +75,26 @@ struct GameView: View {
 
     // MARK: - Helpers
 
+    /// Time string for the current game mode.
+    /// - maxCorrect: count DOWN from 60s (remaining)
+    /// - timeAttack: count UP from 0s (elapsed)
     private var timeString: String {
-        let total = max(0, viewModel.timeRemaining)
+        let total: Double
+        if viewModel.stage.mode == .maxCorrect {
+            total = max(0, viewModel.timeRemaining)
+        } else {
+            total = max(0, viewModel.timeLimit - viewModel.timeRemaining)
+        }
         let mins = Int(total) / 60
         let secs = Int(total) % 60
         return String(format: "%d:%02d", mins, secs)
     }
 
     private var timerColor: Color {
+        // Only the count-down (maxCorrect) mode shows urgency colors near zero.
+        guard viewModel.stage.mode == .maxCorrect else {
+            return ColorPalette.textPrimary
+        }
         if viewModel.timeRemaining <= 5 {
             return ColorPalette.timerCritical
         } else if viewModel.timeRemaining <= 10 {

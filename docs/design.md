@@ -124,10 +124,11 @@ accentGradient: periwinkle → indigo (左上→右下)
 ```
 
 押下時にぷにっと縮んで弾けるように戻る。
-**全インタラクティブボタンに適用**:
+**インタラクティブボタンに適用**:
 - ホームメニューボタン
-- ステージ選択 (Level/Category チップ, サブレベル行, トピック行)
-- ゲーム内カード (将来的に)
+- ステージ選択 (CEFR Level チップ, ゲームモード行)
+- Review フィルターチップ
+- 設定の各ボタン
 
 ### カードアニメーション
 
@@ -136,7 +137,23 @@ accentGradient: periwinkle → indigo (左上→右下)
 | 選択 | scale(1.05) + glow `.spring(response:0.3, damping:0.6)` |
 | 正解 | opacity → 0 (位置維持) `.easeOut(0.3)` |
 | 不正解 | シェイク (3振動 / 0.4秒) |
-| カード差し替え | 0.6秒待機後、`.spring` で同位置に補充 |
+| カード差し替え | 1.1秒デバウンス (最大1.8秒) → `.opacity` + `.scale(0.95)` フェードイン (0.6秒) |
+| 補充先 | 英語/日本語それぞれランダムなスロットを選択 |
+
+### サウンド
+
+[SoundManager.swift](../Sources/KarutaApp/Services/SoundManager.swift)
+
+| ファイル | 用途 | 音量 |
+|---|---|---|
+| `select.caf` | ボタン/レベルタップ | 25% |
+| `correct.caf` | 正解 | 25% |
+| `wrong.caf` | 不正解 | 25% |
+| `countdown.caf` | 残り10秒 (1回のみ再生) | 5% |
+| `timeup.caf` | ゲーム終了 | 5% |
+
+- AVAudioSession: `.ambient` + `.mixWithOthers` (他アプリの音楽を邪魔しない)
+- BGM は未実装
 
 ### ハプティクス
 
@@ -148,7 +165,7 @@ accentGradient: periwinkle → indigo (左上→右下)
 | 正解 | `notificationOccurred(.success)` |
 | 不正解 | `notificationOccurred(.error)` |
 | ストリーク 5連 | `.heavy` impact |
-| カウントダウン | `.light` impact |
+| カウントダウン | `.light` impact (毎秒) |
 | ゲーム終了 | medium → heavy → medium 連打 |
 
 ---
@@ -177,13 +194,14 @@ accentGradient: periwinkle → indigo (左上→右下)
 - spring back animation
 - 触覚 (selectionChanged)
 
-### `levelChip` / `rankChip`
-- 選択時: フィルカラー + シャドウ
+### `levelChip` (CEFR レベル)
+- 選択時: フィルカラー (CEFR色) + シャドウ
 - 非選択時: 白背景 + ボーダー
 
-### `subLevelRow` / `topicRow`
+### `basicModeRow` (ゲームモード)
 - 白背景の柔らかいカード
-- 左に番号 (CEFR色)、中央に情報、右に Best スコア + chevron
+- 左にアイコン (CEFR色)、中央にモード名+説明、右に Best スコア + chevron
+- 1 Minute Challenge / Time Attack / Coming Soon (Listening / Spelling)
 
 ---
 
